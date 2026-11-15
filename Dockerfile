@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/go/pkg/mod \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/sentinel ./cmd/sentinel
 
-FROM --platform=$BUILDPLATFORM node:24.22.3-trixie-slim AS ts-build
+FROM --platform=$BUILDPLATFORM node:26.13.1-trixie-slim AS ts-build
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages ./packages
@@ -43,7 +43,7 @@ RUN npm run build
 # The backend's runtime dependencies, without the dev tools. The links npm
 # makes to the workspaces are dropped: the final stage copies the backend's
 # dist, and the contract's package.json and dist in place of its link.
-FROM --platform=$BUILDPLATFORM node:24.22.3-trixie-slim AS backend-deps
+FROM --platform=$BUILDPLATFORM node:26.13.1-trixie-slim AS backend-deps
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY packages ./packages
@@ -70,7 +70,7 @@ ENTRYPOINT ["/sentinel"]
 # act on in it. The built Web UI is served from /app/web and the avatars
 # from /app/avatars, the defaults of PENELOPE_WEB_DIR and
 # PENELOPE_AVATARS_DIR (docs/backend.md).
-FROM node:24.22.3-trixie-slim AS backend
+FROM node:26.13.1-trixie-slim AS backend
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
@@ -88,7 +88,7 @@ USER 1001:1001
 ENTRYPOINT ["node", "--disable-warning=ExperimentalWarning", "/app/dist/main.js"]
 CMD ["serve"]
 
-FROM node:24.22.3-trixie-slim AS receivers
+FROM node:26.13.1-trixie-slim AS receivers
 ARG VERSION
 ENV NODE_ENV=production PENELOPE_VERSION=${VERSION}
 WORKDIR /app
@@ -100,7 +100,7 @@ ENTRYPOINT ["node", "/app/dist/main.js"]
 # The runner's runtime dependencies. None of them is built for a platform, so
 # they are installed here on the builder's own and copied as they are. The
 # link to the contract is dropped, as for the backend.
-FROM --platform=$BUILDPLATFORM node:24.22.3-trixie-slim AS runner-deps
+FROM --platform=$BUILDPLATFORM node:26.13.1-trixie-slim AS runner-deps
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY packages ./packages
@@ -135,7 +135,7 @@ FROM golang:1.27.4-trixie AS sandbox-go
 # the gems under /var/lib/gems and the command in /usr/local/bin, is copied
 # into the sandbox at the same paths. Renovate raises PORKADOT_VERSION from
 # the repository's tags.
-FROM node:24.22.3-trixie-slim AS sandbox-porkadot
+FROM node:26.13.1-trixie-slim AS sandbox-porkadot
 ARG PORKADOT_VERSION=v0.37.7
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential ca-certificates git ruby ruby-dev \
@@ -157,7 +157,7 @@ RUN git clone --quiet --depth 1 --branch "$PORKADOT_VERSION" https://github.com/
 # The Sentinel's CA is added at start by the entrypoint, from a volume, to the
 # system bundle (docs/pod.md, "CA"). The bundle is kept writable by `agent`
 # for that, with Debian's own copy beside it to start from each time.
-FROM node:24.22.3-trixie-slim AS sandbox
+FROM node:26.13.1-trixie-slim AS sandbox
 ARG VERSION
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
