@@ -107,6 +107,12 @@
   ],
   "packageRules": [
     {
+      "description": "The runner uses pi-ai types with pi-coding-agent, which depends on the exact same pi-ai release. Updating only one installs two pi-ai versions whose private event-stream types are incompatible. Keep these two direct dependencies on one branch",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@earendil-works/pi-ai", "@earendil-works/pi-coding-agent"],
+      "groupName": "pi"
+    },
+    {
       "description": "The Node the images run (the Dockerfile's) and the Node the tests run (setup-node in ci.yml and release.yml) are the same version on purpose: a test passing on one Node says little about another. Grouping them puts them on one branch, so they cannot drift apart one pull request at a time. This takes setup-node's Node out of the shared github-actions group",
       "matchDepNames": ["node"],
       "matchManagers": ["custom.regex", "github-actions"],
