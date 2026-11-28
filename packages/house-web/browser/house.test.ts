@@ -12,9 +12,9 @@ import { after, before, describe, it, type TestContext } from "node:test";
 
 import { type Browser, chromium, type Page } from "playwright-core";
 
-import type { HousePersonView } from "@penelope/contract";
+import type { HouseDelivery, HousePersonView } from "@penelope/contract";
 
-import { EVENING_BEHIND_MS, type FakeHouse, playEvening, startFakeHouse } from "../dev/house.ts";
+import { EVENING_BEHIND_MS, type FakeHouse, type FakeHouseOptions, playEvening, startFakeHouse } from "../dev/house.ts";
 
 const executablePath = process.env.CHROMIUM;
 if (!executablePath) throw new Error("set CHROMIUM to the path of a Chromium or Chrome");
@@ -30,8 +30,8 @@ before(async () => {
 after(() => browser.close());
 
 /** The evening of dev/house.ts: Penelope and sleeping Aki in the living room, Myao in the bath, which holds one. */
-async function evening(t: TestContext, options: { long?: boolean } = {}): Promise<FakeHouse> {
-  const house = await startFakeHouse({ webDir: dist, behindMs: EVENING_BEHIND_MS });
+async function evening(t: TestContext, options: { long?: boolean } & Pick<FakeHouseOptions, "onDelivery"> = {}): Promise<FakeHouse> {
+  const house = await startFakeHouse({ webDir: dist, behindMs: EVENING_BEHIND_MS, onDelivery: options.onDelivery });
   t.after(() => house.close());
   await playEvening(house, options);
   return house;
@@ -106,8 +106,17 @@ describe("the house's screen in a browser", () => {
   });
 
   // ADR-0075, 7: whom a speech is addressed to is its own field. The `@` and what was typed after it are not text.
-  it("sends an addressee picked with @ with the speech, and not in its text", async (t) => {
-    const house = await evening(t);
+  it("sends an addressee picked with @ even when keepalive acknowledges the delivery first", { timeout: 15_000 }, async (t) => {
+    let received!: (delivery: HouseDelivery) => void;
+    const delivery = new Promise<HouseDelivery>((resolve) => (received = resolve));
+    const house = await evening(t, {
+      onDelivery: (agent, delivered) => {
+        const { event } = delivered;
+        if (agent === "penelope" && event.kind === "speech" && event.actor.id === "lee" && event.text === "聞こえる?") {
+          received(delivered);
+        }
+      },
+    });
     const page = await open(t, house, PC);
     await page.getByRole("button", { name: "居間に入る" }).click();
     await field(page, "居間").click();
@@ -121,9 +130,13 @@ describe("the house's screen in a browser", () => {
     const said = page.locator(".speech-text", { hasText: "聞こえる?" });
     await said.waitFor();
     assert.equal(await said.textContent(), "@ペネロペ 聞こえる?");
-    // The house delivered it as addressed: only then does the agent get a way to answer.
-    const delivered = (await house.agent("penelope").sync()).find(({ event }) => event.kind === "speech" && event.text === "聞こえる?");
-    assert.deepEqual(delivered?.answer_via, { command: "house say" });
+    // Let the automatic keepalive receive and acknowledge this speech before an explicit sync.
+    // Its pending queue is consumable, not a record of everything the agent received.
+    const delivered = await delivery;
+    const pending = await house.agent("penelope").sync();
+    assert.equal(pending.some(({ event }) => event.id === delivered.event.id), false);
+    // The callback observes both automatic and explicit syncs, even after their pending queues were acknowledged.
+    assert.deepEqual(delivered.answer_via, { command: "house say" });
   });
 
   it("focuses the conversation heading on a PC when entering and leaving", async (t) => {
